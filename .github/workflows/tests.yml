@@ -22,6 +22,10 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v2
+      - name: rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
       - name: build
         run: ./rebar3 compile
       - name: build test
