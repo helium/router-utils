@@ -262,10 +262,10 @@ schedule_check(Time) ->
 
 -spec request_headers(#state{}) -> proplists:proplist().
 request_headers(#state{etag = undefined}) ->
-    [{"user-agent", "https://github.com/helium/packet_purchaser"}];
+    [{"user-agent", "https://github.com/helium/router-utils"}];
 request_headers(#state{etag = Etag}) ->
     [
-        {<<"user-agent">>, <<"https://github.com/helium/packet_purchaser">>},
+        {<<"user-agent">>, <<"https://github.com/helium/router-utils">>},
         {<<"if-none-match">>, Etag}
     ].
 
