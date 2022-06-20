@@ -30,10 +30,10 @@
     check_timer :: non_neg_integer(),
     filename :: file:filename_all(),
     keys :: list(string()),
-    url :: string(),
+    url :: url(),
     version = 0 :: version(),
-    etag :: etag(),
-    filter :: undefined | binary()
+    etag :: undefined | etag(),
+    filter :: undefined | reference()
 }).
 
 %% ------------------------------------------------------------------
@@ -146,7 +146,10 @@ handle_info(Msg, State) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
--spec fetch_and_verify_latest_denylist(#state{}) -> {ok, #state{}} | {error, any()}.
+-spec fetch_and_verify_latest_denylist(#state{}) ->
+    {ok, #state{}, AssetBin :: binary()}
+    | {skip, any()}
+    | {error, any()}.
 fetch_and_verify_latest_denylist(#state{url = URL, keys = Keys, version = ExistingVersion} = State) ->
     ReqHeaders = request_headers(State),
 
@@ -179,7 +182,9 @@ fetch_and_verify_latest_denylist(#state{url = URL, keys = Keys, version = Existi
     end.
 
 -spec fetch_version_etag_asset(url(), proplists:proplist(), version()) ->
-    {ok, version(), etag(), url()} | {error, any()}.
+    {ok, version(), etag(), url()}
+    | {skip, existing_version | regressed_version}
+    | {error, any()}.
 fetch_version_etag_asset(URL, ReqHeaders, ExistingVersion) ->
     case hackney:get(URL, ReqHeaders, <<>>, [with_body]) of
         {ok, 200, ResHeaders, Body} ->
