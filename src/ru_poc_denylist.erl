@@ -1,3 +1,19 @@
+%%%-------------------------------------------------------------------
+%% @doc
+%% == Router Utils POC Denylist ==
+%%
+%% - Loads POC denylist from github.
+%% - Loads POC from local disk if available.
+%% - Checks if loaded filter contains pubkeybin.
+%%
+%% Startup Options:
+%%   denylist_check_timer:
+%%     `{immediate, MsTimeout}' -> checks remote url immediately
+%%     `{timer, MsTimeout}'     -> checks remote url after timeout
+%%     `manual'                 -> no checks scheduled, only manual calls
+%%
+%% @end
+%%%-------------------------------------------------------------------
 -module(ru_poc_denylist).
 
 -behaviour(gen_server).
@@ -30,7 +46,7 @@
 -type url() :: binary().
 
 -record(state, {
-    check_timer :: non_neg_integer(),
+    check_timer :: {immediate | timer, non_neg_integer()} | manual,
     filename :: file:filename_all(),
     keys :: list(string()),
     url :: url(),
@@ -114,9 +130,16 @@ init([URL, Keys, BaseDir, CheckTimer]) ->
                 State0#state{version = 0}
         end,
 
-    lager:info("attempted bootstrap from disk [version: ~p]", [State1#state.version]),
-
-    ok = schedule_check(0),
+    lager:info(
+        "attempted bootstrap from disk [version: ~p] [check-timer: ~p]",
+        [State1#state.version, CheckTimer]
+    ),
+    ok =
+        case CheckTimer of
+            {immediate, _} -> schedule_check(0);
+            {timer, Timeout} -> schedule_check(Timeout);
+            manual -> ok
+        end,
     {ok, State1}.
 
 handle_call(get_version, _From, State) ->
@@ -148,7 +171,11 @@ handle_info(?CHECK_REMOTE, #state{check_timer = CheckTimer, filename = DenyFile}
                 lager:notice("something went wrong: ~p", [Err]),
                 State
         end,
-    ok = schedule_check(CheckTimer),
+    ok =
+        case CheckTimer of
+            {_, Timeout} -> schedule_check(Timeout);
+            manual -> ok
+        end,
     {noreply, NextState};
 handle_info(Msg, State) ->
     lager:info("unhandled info msg ~p", [Msg]),
