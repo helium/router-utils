@@ -5,7 +5,9 @@
     {applications, [
         kernel,
         stdlib,
-        xorf
+        xorf,
+        lager,
+        hackney
     ]},
     {env, []},
     {modules, []},
