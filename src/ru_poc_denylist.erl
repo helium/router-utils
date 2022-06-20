@@ -9,7 +9,8 @@
     start_link/1,
     check/1,
     get_version/0,
-    get_binary/0
+    get_binary/0,
+    check_remote/0
 ]).
 
 %% ------------------------------------------------------------------
@@ -21,6 +22,8 @@
     handle_cast/2,
     handle_info/2
 ]).
+
+-define(CHECK_REMOTE, check_remote).
 
 -type version() :: integer().
 -type etag() :: binary().
@@ -77,6 +80,10 @@ get_version() ->
 get_binary() ->
     gen_server:call(?MODULE, get_binary).
 
+-spec check_remote() -> ok.
+check_remote() ->
+    gen_server:cast(?MODULE, ?CHECK_REMOTE).
+
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
@@ -125,7 +132,7 @@ handle_cast(Msg, State) ->
     lager:info("unhandled cast msg ~p", [Msg]),
     {noreply, State}.
 
-handle_info(check, #state{check_timer = CheckTimer, filename = DenyFile} = State) ->
+handle_info(?CHECK_REMOTE, #state{check_timer = CheckTimer, filename = DenyFile} = State) ->
     NextState =
         case fetch_and_verify_latest_denylist(State) of
             {ok, #state{filter = Filter} = NewState, AssetBin} ->
@@ -268,7 +275,7 @@ is_valid_filter_bin(Bin, Keys) ->
 
 -spec schedule_check(integer()) -> ok.
 schedule_check(Time) ->
-    _ = erlang:send_after(Time, self(), check),
+    _ = erlang:send_after(Time, self(), ?CHECK_REMOTE),
     ok.
 
 %% ------------------------------------------------------------------
