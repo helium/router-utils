@@ -102,10 +102,12 @@ init([URL, Keys, BaseDir, CheckTimer]) ->
                 %% No need to write to disk, that's where we got it
                 State0#state{version = Version, filter = Filter}
         catch
-            _:_ ->
-                lager:error("failed to bootstrap denylist from disk"),
+            _:Err ->
+                lager:error("failed to bootstrap denylist from disk: [err: ~p]", [Err]),
                 State0#state{version = 0}
         end,
+
+    lager:info("attempted bootstrap from disk [version: ~p]", [State1#state.version]),
 
     ok = schedule_check(0),
     {ok, State1}.
@@ -132,6 +134,9 @@ handle_info(check, #state{check_timer = CheckTimer, filename = DenyFile} = State
                 %% File sys gets the whole Bin the Filter was pulled from.
                 ok = write_filter_to_disk(DenyFile, AssetBin),
                 NewState;
+            {skip, _} = Skip ->
+                lager:info("skipping: ~p", [Skip]),
+                State;
             {error, _} = Err ->
                 lager:notice("something went wrong: ~p", [Err]),
                 State
@@ -160,6 +165,7 @@ fetch_and_verify_latest_denylist(#state{url = URL, keys = Keys, version = Existi
             ReqHeaders,
             ExistingVersion
         ),
+        lager:info("fetch [version: ~p] [etag: ~p]", [NewVersion, ETag]),
 
         %% Pull out the denylist target.
         {ok, AssetBin} = fetch_denylist(AssetURL, ReqHeaders),
@@ -176,6 +182,9 @@ fetch_and_verify_latest_denylist(#state{url = URL, keys = Keys, version = Existi
         {ok, Filter} ->
             {ok, State#state{version = NewVersion, etag = ETag, filter = Filter}, AssetBin}
     catch
+        error:{badmatch, {skip, _} = Skip} ->
+            %% This is fine
+            Skip;
         _:Err:Stack ->
             lager:error("Err: ~p~n", [Stack]),
             {error, Err}
@@ -194,9 +203,9 @@ fetch_version_etag_asset(URL, ReqHeaders, ExistingVersion) ->
                 undefined ->
                     {error, no_tag_name};
                 ExistingVersion ->
-                    {error, existing_version};
+                    {skip, existing_version};
                 NewVersion when NewVersion < ExistingVersion ->
-                    {error, regressed_version};
+                    {skip, regressed_version};
                 NewVersion ->
                     case maps:get(<<"assets">>, Decoded, undefined) of
                         undefined ->
@@ -233,6 +242,7 @@ write_filter_to_disk(DenyFile, Content) ->
 
     try
         ok = file:write_file(TmpDenyFile, Content),
+        lager:info("wrote to ~p, renaming to ~p", [TmpDenyFile, DenyFile]),
         ok = file:rename(TmpDenyFile, DenyFile)
     of
         ok ->
