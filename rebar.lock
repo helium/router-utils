@@ -27,6 +27,10 @@
  {<<"xorf">>,
   {git,"https://github.com/helium/erlang-xorf.git",
        {ref,"f3176db035b481dedb15f15b3c96b45b153c5132"}},
+  0},
+ {<<"xxhash">>,
+  {git,"https://github.com/pierreis/erlang-xxhash",
+       {ref,"92fcfe57a74d3ea1fe794ccdfdf62ce4a036c01b"}},
   0}]}.
 [
 {pkg_hash,[

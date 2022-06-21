@@ -64,7 +64,7 @@ denied(Hotspot) ->
 threshold() ->
     persistent_term:get(?THRESHOLD, ?DEFAULT_THRESHOLD).
 
--spec threshold(Int :: non_neg_integer()) -> non_neg_integer().
+-spec threshold(Int :: non_neg_integer()) -> ok.
 threshold(Int) ->
     persistent_term:put(?THRESHOLD, Int).
 
