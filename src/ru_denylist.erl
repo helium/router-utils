@@ -76,7 +76,7 @@ read_file(DenyFile) ->
                 ok = file:write_file(DenyFile, jsx:encode([])),
                 [];
             {ok, BinFile} ->
-                jsx:decode(BinFile, [{return_maps, false}])
+                jsx:decode(BinFile)
         end
     of
         JSON -> {ok, JSON}
