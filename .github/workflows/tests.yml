@@ -26,6 +26,10 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
+      - name: install linux system dependencies
+        run: |
+          apt-get update
+          apt-get install -y -q libsodium-dev
       - name: build
         run: ./rebar3 compile
       - name: build test
