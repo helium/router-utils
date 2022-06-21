@@ -1,3 +1,19 @@
+%%%-------------------------------------------------------------------
+%% @doc
+%% == Router Utils POC Denylist ==
+%%
+%% - Loads POC denylist from github.
+%% - Loads POC from local disk if available.
+%% - Checks if loaded filter contains pubkeybin.
+%%
+%% Startup Options:
+%%   denylist_check_timer:
+%%     `{immediate, MsTimeout}' -> checks remote url immediately
+%%     `{timer, MsTimeout}'     -> checks remote url after timeout
+%%     `manual'                 -> no checks scheduled, only manual calls
+%%
+%% @end
+%%%-------------------------------------------------------------------
 -module(ru_poc_denylist).
 
 -behaviour(gen_server).
@@ -9,7 +25,8 @@
     start_link/1,
     check/1,
     get_version/0,
-    get_binary/0
+    get_binary/0,
+    check_remote/0
 ]).
 
 %% ------------------------------------------------------------------
@@ -22,18 +39,20 @@
     handle_info/2
 ]).
 
+-define(CHECK_REMOTE, check_remote).
+
 -type version() :: integer().
 -type etag() :: binary().
 -type url() :: binary().
 
 -record(state, {
-    check_timer :: non_neg_integer(),
+    check_timer :: {immediate | timer, non_neg_integer()} | manual,
     filename :: file:filename_all(),
     keys :: list(string()),
-    url :: string(),
+    url :: url(),
     version = 0 :: version(),
-    etag :: etag(),
-    filter :: undefined | binary()
+    etag :: undefined | etag(),
+    filter :: undefined | reference()
 }).
 
 %% ------------------------------------------------------------------
@@ -77,6 +96,10 @@ get_version() ->
 get_binary() ->
     gen_server:call(?MODULE, get_binary).
 
+-spec check_remote() -> ok.
+check_remote() ->
+    gen_server:cast(?MODULE, ?CHECK_REMOTE).
+
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
@@ -102,12 +125,21 @@ init([URL, Keys, BaseDir, CheckTimer]) ->
                 %% No need to write to disk, that's where we got it
                 State0#state{version = Version, filter = Filter}
         catch
-            _:_ ->
-                lager:error("failed to bootstrap denylist from disk"),
+            _:Err ->
+                lager:error("failed to bootstrap denylist from disk: [err: ~p]", [Err]),
                 State0#state{version = 0}
         end,
 
-    ok = schedule_check(0),
+    lager:info(
+        "attempted bootstrap from disk [version: ~p] [check-timer: ~p]",
+        [State1#state.version, CheckTimer]
+    ),
+    ok =
+        case CheckTimer of
+            {immediate, _} -> schedule_check(0);
+            {timer, Timeout} -> schedule_check(Timeout);
+            manual -> ok
+        end,
     {ok, State1}.
 
 handle_call(get_version, _From, State) ->
@@ -123,7 +155,7 @@ handle_cast(Msg, State) ->
     lager:info("unhandled cast msg ~p", [Msg]),
     {noreply, State}.
 
-handle_info(check, #state{check_timer = CheckTimer, filename = DenyFile} = State) ->
+handle_info(?CHECK_REMOTE, #state{check_timer = CheckTimer, filename = DenyFile} = State) ->
     NextState =
         case fetch_and_verify_latest_denylist(State) of
             {ok, #state{filter = Filter} = NewState, AssetBin} ->
@@ -132,11 +164,18 @@ handle_info(check, #state{check_timer = CheckTimer, filename = DenyFile} = State
                 %% File sys gets the whole Bin the Filter was pulled from.
                 ok = write_filter_to_disk(DenyFile, AssetBin),
                 NewState;
+            {skip, _} = Skip ->
+                lager:info("skipping: ~p", [Skip]),
+                State;
             {error, _} = Err ->
                 lager:notice("something went wrong: ~p", [Err]),
                 State
         end,
-    ok = schedule_check(CheckTimer),
+    ok =
+        case CheckTimer of
+            {_, Timeout} -> schedule_check(Timeout);
+            manual -> ok
+        end,
     {noreply, NextState};
 handle_info(Msg, State) ->
     lager:info("unhandled info msg ~p", [Msg]),
@@ -146,7 +185,10 @@ handle_info(Msg, State) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
--spec fetch_and_verify_latest_denylist(#state{}) -> {ok, #state{}} | {error, any()}.
+-spec fetch_and_verify_latest_denylist(#state{}) ->
+    {ok, #state{}, AssetBin :: binary()}
+    | {skip, any()}
+    | {error, any()}.
 fetch_and_verify_latest_denylist(#state{url = URL, keys = Keys, version = ExistingVersion} = State) ->
     ReqHeaders = request_headers(State),
 
@@ -157,6 +199,7 @@ fetch_and_verify_latest_denylist(#state{url = URL, keys = Keys, version = Existi
             ReqHeaders,
             ExistingVersion
         ),
+        lager:info("fetch [version: ~p] [etag: ~p]", [NewVersion, ETag]),
 
         %% Pull out the denylist target.
         {ok, AssetBin} = fetch_denylist(AssetURL, ReqHeaders),
@@ -173,13 +216,18 @@ fetch_and_verify_latest_denylist(#state{url = URL, keys = Keys, version = Existi
         {ok, Filter} ->
             {ok, State#state{version = NewVersion, etag = ETag, filter = Filter}, AssetBin}
     catch
+        error:{badmatch, {skip, _} = Skip} ->
+            %% This is fine
+            Skip;
         _:Err:Stack ->
             lager:error("Err: ~p~n", [Stack]),
             {error, Err}
     end.
 
 -spec fetch_version_etag_asset(url(), proplists:proplist(), version()) ->
-    {ok, version(), etag(), url()} | {error, any()}.
+    {ok, version(), etag(), url()}
+    | {skip, existing_version | regressed_version}
+    | {error, any()}.
 fetch_version_etag_asset(URL, ReqHeaders, ExistingVersion) ->
     case hackney:get(URL, ReqHeaders, <<>>, [with_body]) of
         {ok, 200, ResHeaders, Body} ->
@@ -189,9 +237,9 @@ fetch_version_etag_asset(URL, ReqHeaders, ExistingVersion) ->
                 undefined ->
                     {error, no_tag_name};
                 ExistingVersion ->
-                    {error, existing_version};
+                    {skip, existing_version};
                 NewVersion when NewVersion < ExistingVersion ->
-                    {error, regressed_version};
+                    {skip, regressed_version};
                 NewVersion ->
                     case maps:get(<<"assets">>, Decoded, undefined) of
                         undefined ->
@@ -228,6 +276,7 @@ write_filter_to_disk(DenyFile, Content) ->
 
     try
         ok = file:write_file(TmpDenyFile, Content),
+        lager:info("wrote to ~p, renaming to ~p", [TmpDenyFile, DenyFile]),
         ok = file:rename(TmpDenyFile, DenyFile)
     of
         ok ->
@@ -253,7 +302,7 @@ is_valid_filter_bin(Bin, Keys) ->
 
 -spec schedule_check(integer()) -> ok.
 schedule_check(Time) ->
-    _ = erlang:send_after(Time, self(), check),
+    _ = erlang:send_after(Time, self(), ?CHECK_REMOTE),
     ok.
 
 %% ------------------------------------------------------------------
