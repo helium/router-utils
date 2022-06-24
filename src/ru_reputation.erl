@@ -60,8 +60,9 @@ init() ->
 
 -spec denied(Hotspot :: libp2p_crypto:pubkey_bin()) -> boolean().
 denied(Hotspot) ->
+    Threshold = ?MODULE:threshold(),
     {Missed, Unknown} = ?MODULE:reputation(Hotspot),
-    Missed + Unknown >= ?MODULE:threshold().
+    Missed >= Threshold orelse Unknown >= Threshold.
 
 -spec threshold() -> non_neg_integer().
 threshold() ->
@@ -130,18 +131,30 @@ crawl_reputations() ->
     DecreaseBy20Per = decrease_by(Threshold, 0.2),
     DecreaseBy10Per = decrease_by(Threshold, 0.1),
     lists:foreach(
-        fun({Hotspot, Missed, Unknown}) ->
-            case Missed + Unknown of
-                0 ->
-                    noop;
-                Rep when Rep =< Threshold andalso Missed >= Unknown ->
-                    _ = ets:update_counter(?ETS, Hotspot, {2, DecreaseBy20Per, 0, 0});
-                Rep when Rep =< Threshold andalso Missed < Unknown ->
-                    _ = ets:update_counter(?ETS, Hotspot, {3, DecreaseBy20Per, 0, 0});
-                Rep when Rep > Threshold andalso Missed >= Unknown ->
-                    _ = ets:insert(?ETS, {Hotspot, Threshold + DecreaseBy10Per, 0});
-                Rep when Rep > Threshold andalso Missed < Unknown ->
-                    _ = ets:insert(?ETS, {Hotspot, 0, Threshold + DecreaseBy10Per})
+        fun({Hotspot, Missed0, Unknown0}) ->
+            Missed1 =
+                case Missed0 of
+                    0 ->
+                        0;
+                    Missed0 when Missed0 =< Threshold ->
+                        Missed0 + DecreaseBy20Per;
+                    Missed0 when Missed0 > Threshold ->
+                        Threshold + DecreaseBy10Per
+                end,
+            Unknown1 =
+                case Unknown0 of
+                    0 ->
+                        0;
+                    Unknown0 when Unknown0 =< Threshold ->
+                        Unknown0 + DecreaseBy20Per;
+                    Unknown0 when Unknown0 > Threshold ->
+                        Threshold + DecreaseBy10Per
+                end,
+            case {Missed1, Unknown1} of
+                {0, 0} ->
+                    ets:delete(?ETS, Hotspot);
+                _ ->
+                    _ = ets:insert(?ETS, {Hotspot, only_pos(Missed1), only_pos(Unknown1)})
             end
         end,
         ?MODULE:reputations()
@@ -157,6 +170,10 @@ decrease_by(Threshold, Per) when Per > 0 andalso Per < 1 ->
         X when X < 1 -> -1;
         X -> erlang:round(X) * -1
     end.
+
+-spec only_pos(X :: integer()) -> non_neg_integer().
+only_pos(X) when X < 0 -> 0;
+only_pos(X) -> X.
 
 -spec spawn_crawl_offers(Timer :: non_neg_integer()) -> ok.
 spawn_crawl_offers(Timer) ->
