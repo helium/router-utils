@@ -148,11 +148,11 @@ crawl_reputations() ->
                     Unknown0 when Unknown0 > Threshold ->
                         Threshold + DecreaseBy10Per
                 end,
-            case {Missed1, Unknown1} of
+            case {only_pos(Missed1), only_pos(Unknown1)} of
                 {0, 0} ->
-                    ets:delete(?ETS, Hotspot);
-                _ ->
-                    _ = ets:insert(?ETS, {Hotspot, only_pos(Missed1), only_pos(Unknown1)})
+                    _ = ets:delete(?ETS, Hotspot);
+                {Missed2, Unknown2} ->
+                    _ = ets:insert(?ETS, {Hotspot, Missed2, Unknown2})
             end
         end,
         ?MODULE:reputations()
