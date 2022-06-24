@@ -122,9 +122,7 @@ crawl_offers(Timer) ->
 
 %% This function decrease reputation based on threshold
 %% Equal or under threshold: 20% decrease (% based on threshold)
-%% Over threshold:
-%%     lowest score set to: 0
-%%     highest score set to: threshold - 10% (% based on threshold)
+%% Over threshold:  10% decrease (% based on threshold)
 -spec crawl_reputations() -> ok.
 crawl_reputations() ->
     Threshold = ?MODULE:threshold(),
