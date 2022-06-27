@@ -18,12 +18,14 @@
     reputations/0,
     reputation/1,
     reset/1,
-    crawl_offers/1
+    crawl_offers/1,
+    crawl_reputations/0
 ]).
 
 -define(ETS, ru_reputation_ets).
 -define(OFFER_ETS, ru_reputation_offers_ets).
--define(DEFAULT_TIMER, timer:minutes(2)).
+-define(CRAWL_OFFER_TIMER, timer:minutes(10)).
+-define(CRAWL_REP_TIMER, timer:hours(2)).
 -define(THRESHOLD, ru_reputation_threshold).
 -define(DEFAULT_THRESHOLD, 50).
 
@@ -52,13 +54,15 @@ init() ->
         {write_concurrency, true}
     ],
     _ = ets:new(?OFFER_ETS, Opts2),
-    ok = spawn_crawl_offers(?DEFAULT_TIMER),
+    ok = spawn_crawl_offers(?CRAWL_OFFER_TIMER),
+    ok = spawn_crawl_reputations(?CRAWL_REP_TIMER),
     ok.
 
 -spec denied(Hotspot :: libp2p_crypto:pubkey_bin()) -> boolean().
 denied(Hotspot) ->
+    Threshold = ?MODULE:threshold(),
     {Missed, Unknown} = ?MODULE:reputation(Hotspot),
-    Missed + Unknown >= ?MODULE:threshold().
+    Missed >= Threshold orelse Unknown >= Threshold.
 
 -spec threshold() -> non_neg_integer().
 threshold() ->
@@ -84,7 +88,7 @@ track_unknown(Hotspot) ->
     %% Here we update unknown counter (pos 3)
     ets:update_counter(?ETS, Hotspot, {3, 1}, {default, 0, 0}).
 
--spec reputations() -> list().
+-spec reputations() -> list({binary(), non_neg_integer(), non_neg_integer()}).
 reputations() ->
     ets:tab2list(?ETS).
 
@@ -116,9 +120,58 @@ crawl_offers(Timer) ->
     ),
     ok.
 
+%% This function decrease reputation based on threshold
+%% Equal or under threshold: 20% decrease (% based on threshold)
+%% Over threshold:  10% decrease (% based on threshold)
+-spec crawl_reputations() -> ok.
+crawl_reputations() ->
+    Threshold = ?MODULE:threshold(),
+    DecreaseBy20Per = decrease_by(Threshold, 0.2),
+    DecreaseBy10Per = decrease_by(Threshold, 0.1),
+    lists:foreach(
+        fun({Hotspot, Missed0, Unknown0}) ->
+            Missed1 =
+                case Missed0 of
+                    0 ->
+                        0;
+                    Missed0 when Missed0 =< Threshold ->
+                        Missed0 + DecreaseBy20Per;
+                    Missed0 when Missed0 > Threshold ->
+                        Threshold + DecreaseBy10Per
+                end,
+            Unknown1 =
+                case Unknown0 of
+                    0 ->
+                        0;
+                    Unknown0 when Unknown0 =< Threshold ->
+                        Unknown0 + DecreaseBy20Per;
+                    Unknown0 when Unknown0 > Threshold ->
+                        Threshold + DecreaseBy10Per
+                end,
+            case {only_pos(Missed1), only_pos(Unknown1)} of
+                {0, 0} ->
+                    _ = ets:delete(?ETS, Hotspot);
+                {Missed2, Unknown2} ->
+                    _ = ets:insert(?ETS, {Hotspot, Missed2, Unknown2})
+            end
+        end,
+        ?MODULE:reputations()
+    ).
+
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
+
+-spec decrease_by(Threshold :: non_neg_integer(), Per :: float()) -> neg_integer().
+decrease_by(Threshold, Per) when Per > 0 andalso Per < 1 ->
+    case Threshold * Per of
+        X when X < 1 -> -1;
+        X -> erlang:round(X) * -1
+    end.
+
+-spec only_pos(X :: integer()) -> non_neg_integer().
+only_pos(X) when X < 0 -> 0;
+only_pos(X) -> X.
 
 -spec spawn_crawl_offers(Timer :: non_neg_integer()) -> ok.
 spawn_crawl_offers(Timer) ->
@@ -126,6 +179,15 @@ spawn_crawl_offers(Timer) ->
         ok = timer:sleep(Timer),
         ok = crawl_offers(Timer),
         ok = spawn_crawl_offers(Timer)
+    end),
+    ok.
+
+-spec spawn_crawl_reputations(Timer :: non_neg_integer()) -> ok.
+spawn_crawl_reputations(Timer) ->
+    _ = erlang:spawn(fun() ->
+        ok = timer:sleep(Timer),
+        ok = crawl_reputations(),
+        ok = spawn_crawl_reputations(Timer)
     end),
     ok.
 
@@ -201,6 +263,40 @@ good_test() ->
     ets:delete(?ETS),
     ets:delete(?OFFER_ETS),
 
+    ok.
+
+crawl_reputations_test() ->
+    ok = ?MODULE:init(),
+
+    Threshold = ?MODULE:threshold(),
+
+    Hotspot1 = crypto:strong_rand_bytes(32),
+    Hotspot2 = crypto:strong_rand_bytes(32),
+    Hotspot3 = crypto:strong_rand_bytes(32),
+    Hotspot4 = crypto:strong_rand_bytes(32),
+    Hotspot5 = crypto:strong_rand_bytes(32),
+    Hotspot6 = crypto:strong_rand_bytes(32),
+    Hotspot7 = crypto:strong_rand_bytes(32),
+    ?assert(ets:insert(?ETS, {Hotspot1, 0, 0})),
+    ?assert(ets:insert(?ETS, {Hotspot2, Threshold, 0})),
+    ?assert(ets:insert(?ETS, {Hotspot3, 0, Threshold})),
+    ?assert(ets:insert(?ETS, {Hotspot4, Threshold - 1, 0})),
+    ?assert(ets:insert(?ETS, {Hotspot5, 0, Threshold - 1})),
+    ?assert(ets:insert(?ETS, {Hotspot6, Threshold + 1, 1})),
+    ?assert(ets:insert(?ETS, {Hotspot7, 1, Threshold + 1})),
+
+    ?assertEqual(ok, ?MODULE:crawl_reputations()),
+
+    ?assertEqual({0, 0}, ?MODULE:reputation(Hotspot1)),
+    ?assertEqual({40, 0}, ?MODULE:reputation(Hotspot2)),
+    ?assertEqual({0, 40}, ?MODULE:reputation(Hotspot3)),
+    ?assertEqual({39, 0}, ?MODULE:reputation(Hotspot4)),
+    ?assertEqual({0, 39}, ?MODULE:reputation(Hotspot5)),
+    ?assertEqual({45, 0}, ?MODULE:reputation(Hotspot6)),
+    ?assertEqual({0, 45}, ?MODULE:reputation(Hotspot7)),
+
+    ets:delete(?ETS),
+    ets:delete(?OFFER_ETS),
     ok.
 
 -endif.
