@@ -187,7 +187,7 @@ spawn_crawl_reputations(Timer) ->
     _ = erlang:spawn(fun() ->
         ok = timer:sleep(Timer),
         ok = crawl_reputations(),
-        ok = spawn_crawl_offers(Timer)
+        ok = spawn_crawl_reputations(Timer)
     end),
     ok.
 
