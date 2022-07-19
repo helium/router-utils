@@ -10,6 +10,8 @@
 -author("jonathanruttenberg").
 
 -define(METRICS_GWMP_COUNT, "gwmp_counter").
+
+%% erlfmt-ignore
 -define(VALID_NET_IDS, sets:from_list(
   lists:seq(16#000000, 16#0000FF) ++
     lists:seq(16#600000, 16#6000FF) ++
@@ -18,7 +20,7 @@
 )).
 
 %% API
--export([push_ack/2]).
+-export([push_ack/2, clean_net_id/1]).
 
 -spec push_ack(Prefix :: string(), NetID :: non_neg_integer()) -> ok.
 push_ack(Prefix, NetID) ->
