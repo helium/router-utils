@@ -10,7 +10,7 @@
 -author("jonathanruttenberg").
 
 %% API
--export([handle_push_data/3, pubkeybin_to_mac/1]).
+-export([handle_push_data/3, pubkeybin_to_mac/1, send_tx_ack/2]).
 
 handle_push_data(PushDataMap, Location, PacketTime) ->
   #{pub_key_bin := PubKeyBin,
@@ -64,3 +64,21 @@ handle_push_data(PushDataMap, Location, PacketTime) ->
 -spec pubkeybin_to_mac(binary()) -> binary().
 pubkeybin_to_mac(PubKeyBin) ->
   <<(xxhash:hash64(PubKeyBin)):64/unsigned-integer>>.
+
+-spec send_tx_ack(
+    binary(),
+    #{pubkeybin := libp2p_crypto:pubkey_bin(),
+    socket := pp_udp_socket:socket()}) -> ok | {error, any()}.
+send_tx_ack(
+    Token,
+    #{pubkeybin := PubKeyBin, socket := Socket}
+) ->
+  Data = semtech_udp:tx_ack(Token, udp_worker_utils:pubkeybin_to_mac(PubKeyBin)),
+  Reply = pp_udp_socket:send(Socket, Data),
+  lager:debug("sent ~p/~p to ~p replied: ~p", [
+    Token,
+    Data,
+    pp_udp_socket:get_address(Socket),
+    Reply
+  ]),
+  Reply.
