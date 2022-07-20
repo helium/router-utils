@@ -20,12 +20,27 @@
 )).
 
 %% API
--export([push_ack/2, clean_net_id/1]).
+-export([push_ack/2, clean_net_id/1, pull_ack/2, push_ack_missed/2, pull_ack_missed/2]).
 
 -spec push_ack(Prefix :: string(), NetID :: non_neg_integer()) -> ok.
 push_ack(Prefix, NetID) ->
   Name = build_name(Prefix, ?METRICS_GWMP_COUNT),
   prometheus_counter:inc(Name, [clean_net_id(NetID), push_ack, hit]).
+
+-spec pull_ack(Prefix :: string(), NetID :: non_neg_integer()) -> ok.
+pull_ack(Prefix, NetID) ->
+  Name = build_name(Prefix, ?METRICS_GWMP_COUNT),
+  prometheus_counter:inc(Name, [gwmp_metrics:clean_net_id(NetID), pull_ack, hit]).
+
+-spec push_ack_missed(Prefix :: string(), NetID :: non_neg_integer()) -> ok.
+push_ack_missed(Prefix, NetID) ->
+  Name = build_name(Prefix, ?METRICS_GWMP_COUNT),
+  prometheus_counter:inc(Name, [gwmp_metrics:clean_net_id(NetID), push_ack, miss]).
+
+-spec pull_ack_missed(Prefix :: string(), NetID :: non_neg_integer()) -> ok.
+pull_ack_missed(Prefix, NetID) ->
+  Name = build_name(Prefix, ?METRICS_GWMP_COUNT),
+  prometheus_counter:inc(Name, [gwmp_metrics:clean_net_id(NetID), pull_ack, miss]).
 
 build_name(Prefix, Body) ->
   list_to_atom(Prefix ++ Body).
