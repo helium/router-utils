@@ -24,3 +24,6 @@
 -define(TX_ACK_ERROR_TX_FREQ, <<"TX_FREQ">>).
 -define(TX_ACK_ERROR_TX_POWER, <<"TX_POWER">>).
 -define(TX_ACK_ERROR_GPS_UNLOCKED, <<"GPS_UNLOCKED">>).
+
+-define(PULL_DATA_TICK, pull_data_tick).
+-define(PULL_DATA_TIMEOUT_TICK, pull_data_timeout_tick).
