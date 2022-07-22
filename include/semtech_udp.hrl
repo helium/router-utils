@@ -1,3 +1,12 @@
+-record(lns_udp_state, {
+  socket :: gen_udp:socket(),
+  port :: inet:port_number(),
+  custom_state,
+  handle_push_data_fun = undefined :: function() | undefined,
+  handle_pull_data_fun = undefined :: function() | undefined,
+  handle_tx_ack_fun = undefined :: function() | undefined
+}).
+
 -define(PROTOCOL_2, 2).
 -define(PUSH_DATA, 0).
 -define(PUSH_ACK, 1).
@@ -27,3 +36,4 @@
 
 -define(PULL_DATA_TICK, pull_data_tick).
 -define(PULL_DATA_TIMEOUT_TICK, pull_data_timeout_tick).
+
