@@ -11,8 +11,7 @@
 
 -record(socket, {
     socket :: gen_udp:socket(),
-    primary :: socket_info(),
-    tee :: undefined | socket_info()
+    primary :: socket_info()
 }).
 
 -type socket() :: #socket{}.
@@ -23,14 +22,13 @@
 -export_type([socket/0, socket_address/0, socket_port/0]).
 
 -spec open(socket_info(), socket_info()) -> {ok, socket()}.
-open(Primary, Tee) ->
+open(Primary, _Tee) ->
     {ok, Socket} = gen_udp:open(0, [binary, {active, true}]),
-    {ok, #socket{socket = Socket, primary = Primary, tee = Tee}}.
+    {ok, #socket{socket = Socket, primary = Primary}}.
 
 -spec send(socket(), binary()) -> ok | {error, any()}.
-send(#socket{socket = Socket, primary = Primary, tee = Tee}, Data) ->
+send(#socket{socket = Socket, primary = Primary}, Data) ->
     Reply = do_send(Socket, Primary, Data),
-    _ = do_send(Socket, Tee, Data),
     Reply.
 
 -spec do_send(gen_udp:socket(), undefined | socket_info(), binary()) -> ok | {error, any()}.
