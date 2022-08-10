@@ -20,6 +20,7 @@
 
 handle_push_data(PushDataMap, Location, PacketTime) ->
   #{pub_key_bin := PubKeyBin,
+    mac := MAC,
     region := Region,
     tmst := Tmst,
     payload := Payload,
@@ -28,7 +29,6 @@ handle_push_data(PushDataMap, Location, PacketTime) ->
     signal_strength := SignalStrength,
     snr := Snr} = PushDataMap,
 
-  MAC = pubkeybin_to_mac(PubKeyBin),
   Token = semtech_udp:token(),
   {Index, Lat, Long} =
     case Location of
