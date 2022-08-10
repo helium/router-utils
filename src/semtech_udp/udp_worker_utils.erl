@@ -14,7 +14,9 @@
 %% API
 -export([handle_push_data/3, pubkeybin_to_mac/1, send_tx_ack/2,
   handle_pull_response/3, handle_pull_ack/6, handle_pull_data_timeout/3,
-  send_pull_data/1, schedule_pull_data/1, handle_push_ack/4, new_push_and_shutdown/5, update_address/3, send_push_data/3, update_address/2]).
+  send_pull_data/1, schedule_pull_data/1, handle_push_ack/4,
+  new_push_and_shutdown/5, update_address/3, send_push_data/3,
+  update_address/2, schedule_shutdown/1]).
 
 handle_push_data(PushDataMap, Location, PacketTime) ->
   #{pub_key_bin := PubKeyBin,
