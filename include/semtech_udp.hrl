@@ -39,3 +39,5 @@
 -define(SHUTDOWN_TICK, shutdown_tick).
 -define(PUSH_DATA_TICK, push_data_tick).
 -define(PUSH_DATA_TIMER, timer:seconds(2)).
+-define(SHUTDOWN_TIMER, timer:minutes(5)).
+-define(PULL_DATA_TIMER, timer:seconds(10)).
