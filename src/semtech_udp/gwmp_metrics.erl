@@ -10,6 +10,7 @@
 -author("jonathanruttenberg").
 
 -define(METRICS_GWMP_COUNT, "gwmp_counter").
+-define(PACKET_PURCHASER_PREFIX, "packet_purchaser_").
 
 %% erlfmt-ignore
 -define(VALID_NET_IDS, sets:from_list(
@@ -22,25 +23,33 @@
 %% API
 -export([push_ack/2, clean_net_id/1, pull_ack/2, push_ack_missed/2, pull_ack_missed/2]).
 
--spec push_ack(Prefix :: string(), NetID :: non_neg_integer()) -> ok.
-push_ack(Prefix, NetID) ->
-  Name = build_name(Prefix, ?METRICS_GWMP_COUNT),
-  prometheus_counter:inc(Name, [clean_net_id(NetID), push_ack, hit]).
+-spec push_ack(Prefix :: string(), ID :: non_neg_integer() | binary()) -> ok.
+push_ack(?PACKET_PURCHASER_PREFIX, NetID) ->
+  Name = build_name(?PACKET_PURCHASER_PREFIX, ?METRICS_GWMP_COUNT),
+  prometheus_counter:inc(Name, [clean_net_id(NetID), push_ack, hit]);
+push_ack(_Prefix, _ID) ->
+  ok.
 
--spec pull_ack(Prefix :: string(), NetID :: non_neg_integer()) -> ok.
-pull_ack(Prefix, NetID) ->
-  Name = build_name(Prefix, ?METRICS_GWMP_COUNT),
-  prometheus_counter:inc(Name, [gwmp_metrics:clean_net_id(NetID), pull_ack, hit]).
+-spec pull_ack(Prefix :: string(), ID :: non_neg_integer() | binary()) -> ok.
+pull_ack(?PACKET_PURCHASER_PREFIX, NetID) ->
+  Name = build_name(?PACKET_PURCHASER_PREFIX, ?METRICS_GWMP_COUNT),
+  prometheus_counter:inc(Name, [gwmp_metrics:clean_net_id(NetID), pull_ack, hit]);
+pull_ack(_Prefix, _ID) ->
+  ok.
 
--spec push_ack_missed(Prefix :: string(), NetID :: non_neg_integer()) -> ok.
-push_ack_missed(Prefix, NetID) ->
-  Name = build_name(Prefix, ?METRICS_GWMP_COUNT),
-  prometheus_counter:inc(Name, [gwmp_metrics:clean_net_id(NetID), push_ack, miss]).
+-spec push_ack_missed(Prefix :: string(), ID :: non_neg_integer() | binary()) -> ok.
+push_ack_missed(?PACKET_PURCHASER_PREFIX, NetID) ->
+  Name = build_name(?PACKET_PURCHASER_PREFIX, ?METRICS_GWMP_COUNT),
+  prometheus_counter:inc(Name, [gwmp_metrics:clean_net_id(NetID), push_ack, miss]);
+push_ack_missed(_Prefix, _ID) ->
+  ok.
 
--spec pull_ack_missed(Prefix :: string(), NetID :: non_neg_integer()) -> ok.
-pull_ack_missed(Prefix, NetID) ->
-  Name = build_name(Prefix, ?METRICS_GWMP_COUNT),
-  prometheus_counter:inc(Name, [gwmp_metrics:clean_net_id(NetID), pull_ack, miss]).
+-spec pull_ack_missed(Prefix :: string(), ID :: non_neg_integer() | binary()) -> ok.
+pull_ack_missed(?PACKET_PURCHASER_PREFIX, NetID) ->
+  Name = build_name(?PACKET_PURCHASER_PREFIX, ?METRICS_GWMP_COUNT),
+  prometheus_counter:inc(Name, [gwmp_metrics:clean_net_id(NetID), pull_ack, miss]);
+pull_ack_missed(_Prefix, _ID) ->
+  ok.
 
 build_name(Prefix, Body) ->
   list_to_atom(Prefix ++ Body).
