@@ -36,4 +36,6 @@
 
 -define(PULL_DATA_TICK, pull_data_tick).
 -define(PULL_DATA_TIMEOUT_TICK, pull_data_timeout_tick).
-
+-define(SHUTDOWN_TICK, shutdown_tick).
+-define(PUSH_DATA_TICK, push_data_tick).
+-define(PUSH_DATA_TIMER, timer:seconds(2)).

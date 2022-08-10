@@ -11,7 +11,7 @@
 
 -record(socket, {
     socket :: gen_udp:socket(),
-    primary :: socket_info()
+    primary :: socket_info() | undefined
 }).
 
 -type socket() :: #socket{}.
