@@ -79,7 +79,7 @@ send_tx_ack(
     Token,
     #{pubkeybin := PubKeyBin, socket := Socket}
 ) ->
-  Data = semtech_udp:tx_ack(Token, udp_worker_utils:pubkeybin_to_mac(PubKeyBin)),
+  Data = semtech_udp:tx_ack(Token, pubkeybin_to_mac(PubKeyBin)),
   Reply = pp_udp_socket:send(Socket, Data),
   lager:debug("sent ~p/~p to ~p replied: ~p", [
     Token,
@@ -111,7 +111,7 @@ handle_pull_ack(Data, undefined, _PullDataTimer, _NetID, _MetricsPrefix) ->
   #{};
 handle_pull_ack(Data, {PullDataRef, PullDataToken}, PullDataTimer, NetID, MetricsPrefix) ->
   NewPullData =
-    udp_worker_utils:handle_pull_ack(Data, PullDataToken, PullDataRef, PullDataTimer, NetID, MetricsPrefix),
+    handle_pull_ack(Data, PullDataToken, PullDataRef, PullDataTimer, NetID, MetricsPrefix),
   case NewPullData of
     undefined -> #{pull_data => NewPullData};
     _ -> #{pull_data => {PullDataRef, PullDataToken}}
@@ -129,17 +129,17 @@ handle_pull_ack(Data, PullDataToken, PullDataRef, PullDataTimer, NetID, MetricsP
       ignore
   end.
 
-handle_udp(Data, PushData, NetID, PullData, PullDataTimer, PubKeyBin, Socket,
+handle_udp(Data, PushData, ID, PullData, PullDataTimer, PubKeyBin, Socket,
     PullRespFunction, MetricsPrefix) ->
   Identifier = semtech_udp:identifier(Data),
   lager:debug("got udp ~p / ~p", [semtech_udp:identifier_to_atom(Identifier), Data]),
   StateUpdates = case semtech_udp:identifier(Data) of
                    ?PUSH_ACK ->
-                     udp_worker_utils:handle_push_ack(Data, PushData, NetID, MetricsPrefix);
+                     handle_push_ack(Data, PushData, ID, MetricsPrefix);
                    ?PULL_ACK ->
-                     udp_worker_utils:handle_pull_ack(Data, PullData, PullDataTimer, NetID);
+                     handle_pull_ack(Data, PullData, PullDataTimer, ID, MetricsPrefix);
                    ?PULL_RESP ->
-                     udp_worker_utils:handle_pull_resp(Data, PubKeyBin, Socket, PullRespFunction);
+                     handle_pull_resp(Data, PubKeyBin, Socket, PullRespFunction);
                    _Id ->
                      lager:warning("got unknown identifier ~p for ~p", [_Id, Data]),
                      #{}
@@ -153,7 +153,7 @@ schedule_pull_data(PullDataTimer) ->
 handle_pull_data_timeout(PullDataTimer, NetID, MetricsPrefix) ->
   lager:debug("got a pull data timeout, ignoring missed pull_ack [retry: ~p]", [PullDataTimer]),
   ok = gwmp_metrics:pull_ack_missed(MetricsPrefix, NetID),
-  _ = udp_worker_utils:schedule_pull_data(PullDataTimer).
+  _ = schedule_pull_data(PullDataTimer).
 
 -spec send_pull_data(#{pubkeybin := libp2p_crypto:pubkey_bin(), socket := pp_udp_socket:socket(),
 pull_data_timer := non_neg_integer()}) -> {ok, {reference(), binary()}} | {error, any()}.
