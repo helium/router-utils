@@ -16,7 +16,7 @@
   handle_pull_response/3, handle_pull_ack/6, handle_pull_data_timeout/3,
   send_pull_data/1, schedule_pull_data/1, handle_push_ack/4,
   new_push_and_shutdown/5, update_address/3, send_push_data/3,
-  update_address/2, schedule_shutdown/1]).
+  update_address/2, schedule_shutdown/1, handle_pull_ack/5, handle_pull_resp/4, handle_udp/9]).
 
 handle_push_data(PushDataMap, Location, PacketTime) ->
   #{pub_key_bin := PubKeyBin,
@@ -93,8 +93,31 @@ handle_pull_response(Data, PubKeyBin, Socket) ->
   Token = semtech_udp:token(Data),
   send_tx_ack(Token, #{pubkeybin => PubKeyBin, socket => Socket}).
 
-handle_pull_ack(Data, PullDataToken, PullDataRef, PullDataTimer, NetID, MetricsPrefix) ->
-  case semtech_udp:token(Data) of
+-spec handle_pull_resp(binary(), libp2p_crypto:pubkey_bin(), pp_udp_socket:socket(), function()) -> any().
+handle_pull_resp(Data, PubKeyBin, Socket, PullRespFunction) ->
+  _ = PullRespFunction(Data),
+  handle_pull_response(Data, PubKeyBin, Socket),
+  StateUpdates = #{},
+  StateUpdates.
+
+-spec handle_pull_ack(binary(),
+    {reference(), binary()} | undefined,
+    non_neg_integer(),
+    non_neg_integer(),
+    string()
+    ) -> map().
+handle_pull_ack(Data, undefined, _PullDataTimer, _NetID, _MetricsPrefix) ->
+  lager:warning("got unknown pull ack for ~p", [Data]),
+  #{};
+handle_pull_ack(Data, {PullDataRef, PullDataToken}, PullDataTimer, NetID, MetricsPrefix) ->
+  NewPullData =
+    udp_worker_utils:handle_pull_ack(Data, PullDataToken, PullDataRef, PullDataTimer, NetID, MetricsPrefix),
+  case NewPullData of
+    undefined -> #{pull_data => NewPullData};
+    _ -> #{pull_data => {PullDataRef, PullDataToken}}
+  end.
+
+handle_pull_ack(Data, PullDataToken, PullDataRef, PullDataTimer, NetID, MetricsPrefix) -> case semtech_udp:token(Data) of
     PullDataToken ->
       erlang:cancel_timer(PullDataRef),
       lager:debug("got pull ack for ~p", [PullDataToken]),
@@ -105,6 +128,23 @@ handle_pull_ack(Data, PullDataToken, PullDataRef, PullDataTimer, NetID, MetricsP
       lager:warning("got unknown pull ack for ~p", [_UnknownToken]),
       ignore
   end.
+
+handle_udp(Data, PushData, NetID, PullData, PullDataTimer, PubKeyBin, Socket,
+    PullRespFunction, MetricsPrefix) ->
+  Identifier = semtech_udp:identifier(Data),
+  lager:debug("got udp ~p / ~p", [semtech_udp:identifier_to_atom(Identifier), Data]),
+  StateUpdates = case semtech_udp:identifier(Data) of
+                   ?PUSH_ACK ->
+                     udp_worker_utils:handle_push_ack(Data, PushData, NetID, MetricsPrefix);
+                   ?PULL_ACK ->
+                     udp_worker_utils:handle_pull_ack(Data, PullData, PullDataTimer, NetID);
+                   ?PULL_RESP ->
+                     udp_worker_utils:handle_pull_resp(Data, PubKeyBin, Socket, PullRespFunction);
+                   _Id ->
+                     lager:warning("got unknown identifier ~p for ~p", [_Id, Data]),
+                     #{}
+                 end,
+  StateUpdates.
 
 -spec schedule_pull_data(non_neg_integer()) -> reference().
 schedule_pull_data(PullDataTimer) ->
@@ -141,13 +181,13 @@ handle_push_ack(Data, PushData, NetID, MetricsPrefix) ->
   case maps:get(Token, PushData, undefined) of
     undefined ->
       lager:debug("got unknown push ack ~p", [Token]),
-      PushData;
+      #{push_data => PushData};
     {_, TimerRef} ->
       lager:debug("got push ack ~p", [Token]),
       _ = erlang:cancel_timer(TimerRef),
       ok = gwmp_metrics:push_ack(MetricsPrefix, NetID),
       NewPushData = maps:remove(Token, PushData),
-      NewPushData
+      #{push_data => NewPushData}
   end.
 
 new_push_and_shutdown(Token, Data, TimerRef, PushData, ShutdownTimeout) ->
