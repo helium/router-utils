@@ -12,25 +12,25 @@
 -include("gwmp_udp_worker_sup.hrl").
 
 %% API
--export([maybe_start_worker/5, lookup_worker/2, gwmp_udp_sup_init/3]).
+-export([maybe_start_worker/6, lookup_worker/2, gwmp_udp_sup_init/3]).
 
 -spec maybe_start_worker(
     WorkerKey :: {PubKeyBin :: binary(), NetID :: non_neg_integer() | binary()},
-    Args :: map() | {error, any()}, atom(), atom(), atom()
+    Args :: map() | {error, any()}, atom(), atom(), atom(), atom()
 ) -> {ok, pid()} | {error, any()} | {error, worker_not_started, any()}.
-maybe_start_worker(_WorkerKey, {error, _} = Err, _, _, _) ->
+maybe_start_worker(_WorkerKey, {error, _} = Err, _, _, _, _) ->
   Err;
-maybe_start_worker(WorkerKey, Args, AppName, UDPWorker, ETSTableName) ->
+maybe_start_worker(WorkerKey, Args, AppName, UDPWorker, ETSTableName, SupModule) ->
   case ets:lookup(ETSTableName, WorkerKey) of
     [] ->
-      start_worker(WorkerKey, Args, AppName, UDPWorker, ETSTableName);
+      start_worker(WorkerKey, Args, AppName, UDPWorker, ETSTableName, SupModule);
     [{WorkerKey, Pid}] ->
       case erlang:is_process_alive(Pid) of
         true ->
           {ok, Pid};
         false ->
           _ = ets:delete(ETSTableName, WorkerKey),
-          start_worker(WorkerKey, Args, AppName, UDPWorker, ETSTableName)
+          start_worker(WorkerKey, Args, AppName, UDPWorker, ETSTableName, SupModule)
       end
   end.
 
@@ -52,12 +52,12 @@ gwmp_udp_sup_init(ETSTableName, UDPWorker, Flags) ->
   {ok, {Flags, [?WORKER(UDPWorker)]}}.
 
 -spec start_worker({binary(), non_neg_integer() | binary()}, map(),
-    atom(), atom(), atom()) ->
+    atom(), atom(), atom(), atom()) ->
   {ok, pid()} | {error, worker_not_started, any()}.
-start_worker({PubKeyBin, NetID} = WorkerKey, Args, AppName, UDPWorker, ETSTableName) ->
+start_worker({PubKeyBin, NetID} = WorkerKey, Args, AppName, UDPWorker, ETSTableName, SupModule) ->
   AppArgs = get_app_args(AppName, UDPWorker),
   ChildArgs = maps:merge(#{pubkeybin => PubKeyBin, net_id => NetID}, maps:merge(AppArgs, Args)),
-  case supervisor:start_child(UDPWorker, [ChildArgs]) of
+  case supervisor:start_child(SupModule, [ChildArgs]) of
     {error, Err} ->
       {error, worker_not_started, Err};
     {ok, Pid} = OK ->
@@ -66,7 +66,7 @@ start_worker({PubKeyBin, NetID} = WorkerKey, Args, AppName, UDPWorker, ETSTableN
           OK;
         false ->
           supervisor:terminate_child(UDPWorker, Pid),
-          maybe_start_worker(WorkerKey, Args, AppName, UDPWorker, ETSTableName)
+          maybe_start_worker(WorkerKey, Args, AppName, UDPWorker, ETSTableName, SupModule)
       end
   end.
 
