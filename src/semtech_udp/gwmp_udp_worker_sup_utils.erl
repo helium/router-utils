@@ -57,7 +57,7 @@ gwmp_udp_sup_init(ETSTableName, UDPWorker, Flags) ->
 start_worker({PubKeyBin, NetID} = WorkerKey, Args, AppName, UDPWorker, ETSTableName) ->
   AppArgs = get_app_args(AppName, UDPWorker),
   ChildArgs = maps:merge(#{pubkeybin => PubKeyBin, net_id => NetID}, maps:merge(AppArgs, Args)),
-  case supervisor:start_child(?MODULE, [ChildArgs]) of
+  case supervisor:start_child(UDPWorker, [ChildArgs]) of
     {error, Err} ->
       {error, worker_not_started, Err};
     {ok, Pid} = OK ->
@@ -65,7 +65,7 @@ start_worker({PubKeyBin, NetID} = WorkerKey, Args, AppName, UDPWorker, ETSTableN
         true ->
           OK;
         false ->
-          supervisor:terminate_child(?MODULE, Pid),
+          supervisor:terminate_child(UDPWorker, Pid),
           maybe_start_worker(WorkerKey, Args, AppName, UDPWorker, ETSTableName)
       end
   end.
