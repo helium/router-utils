@@ -89,7 +89,7 @@ read_file(DenyFile) ->
 write_filter_to_disk(DenyFile, Content) ->
     TmpDenyFile = DenyFile ++ "-tmp",
     try
-        ok = file:write_file(TmpDenyFile, Content),
+        ok = file:write_file(TmpDenyFile, jsx:prettify(Content)),
         ok = file:rename(TmpDenyFile, DenyFile)
     of
         ok ->
