@@ -59,6 +59,8 @@
 %% API Function Definitions
 %% ------------------------------------------------------------------
 
+start_link([Args]) ->
+    start_link(Args);
 start_link(Args) ->
     case Args of
         #{
@@ -74,6 +76,7 @@ start_link(Args) ->
                 []
             );
         _ ->
+            lager:info("ignored ~p", [Args]),
             ignore
     end.
 
